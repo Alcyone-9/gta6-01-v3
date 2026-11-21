@@ -1,19 +1,129 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<title>Coral City Heat v3</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b1026; font-family: Verdana, Geneva, sans-serif; color: #fff; }
+  #game-canvas { position: fixed; inset: 0; }
+  #game-canvas canvas { display: block; }
+  .panel { background: rgba(8, 14, 26, 0.72); border: 1px solid rgba(255,255,255,0.22); border-radius: 10px; backdrop-filter: blur(3px); }
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #hud-top { position: absolute; top: 12px; left: 12px; display: flex; flex-direction: column; gap: 6px; max-width: 430px; }
+  #hud-money { font-size: 24px; font-weight: bold; color: #7bf1a8; text-shadow: 0 2px 4px #000; padding: 4px 10px; }
+  .bar-row { display: flex; align-items: center; gap: 8px; padding: 5px 10px; font-size: 11px; letter-spacing: 1px; }
+  .bar { width: 170px; height: 11px; background: rgba(255,255,255,0.16); border-radius: 6px; overflow: hidden; }
+  .bar > div { height: 100%; transition: width 0.18s; }
+  #health-fill { background: linear-gradient(90deg, #ef476f, #ff8fa3); width: 100%; }
+  #vehicle-fill { background: linear-gradient(90deg, #118ab2, #6ee7ff); width: 0%; }
+  #hud-objective { padding: 8px 12px; font-size: 13.5px; line-height: 1.45; color: #ffe9a8; }
+  #hud-right { position: absolute; top: 12px; right: 12px; text-align: right; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  #hud-stars { font-size: 26px; color: #ffd700; text-shadow: 0 0 8px rgba(255,180,0,0.8), 0 2px 3px #000; min-height: 32px; padding: 0 8px; }
+  #hud-stars.hot { color: #ff5964; animation: pulse 0.7s infinite alternate; }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.12); } }
+  #hud-clock, #hud-cassettes, #hud-speed { padding: 5px 10px; font-size: 13px; color: #d7f0ff; }
+  #minimap-wrap { position: absolute; right: 12px; bottom: 12px; padding: 6px; }
+  #minimap { display: block; width: 196px; height: 196px; border-radius: 6px; }
+  #banner { position: absolute; top: 16%; left: 50%; transform: translateX(-50%) scale(0.92); font-size: 27px; font-weight: bold; text-align: center; color: #fff; text-shadow: 0 3px 10px #000; opacity: 0; transition: all 0.25s; max-width: 78%; pointer-events: none; }
+  #banner.show { opacity: 1; transform: translateX(-50%) scale(1); }
+  #toast { position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%); padding: 8px 16px; font-size: 14.5px; color: #fff; opacity: 0; transition: opacity 0.2s; }
+  #toast.show { opacity: 1; }
+  #dialogue { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); width: min(680px, 92%); padding: 14px 18px; display: none; pointer-events: none; }
+  #dialogue.show { display: block; }
+  #dialogue-name { color: #ffd166; font-weight: bold; font-size: 15px; margin-bottom: 5px; }
+  #dialogue-text { font-size: 15.5px; line-height: 1.5; }
+  #dialogue-hint { margin-top: 7px; font-size: 11.5px; color: #9fd8ff; }
+  #bust-wrap { position: absolute; left: 50%; bottom: 210px; transform: translateX(-50%); width: 300px; padding: 7px 12px; display: none; text-align: center; }
+  #bust-wrap.show { display: block; }
+  #bust-wrap .bar { width: 100%; margin-top: 4px; }
+  #bust-fill { background: linear-gradient(90deg, #ffd166, #ef476f); width: 0%; }
+  #damage-vignette { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 52%, rgba(190,10,30,0.55) 100%); }
+  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: linear-gradient(160deg, rgba(7,12,28,0.88), rgba(64,20,44,0.82)); z-index: 20; }
+  .screen.show { display: flex; }
+  .card { width: min(640px, 92%); padding: 30px 34px; text-align: center; }
+  .card h1 { font-size: 44px; letter-spacing: 2px; color: #ffd166; text-shadow: 0 4px 0 #b5179e, 0 8px 22px #000; margin-bottom: 6px; }
+  .card h2 { font-size: 27px; color: #ffd166; margin-bottom: 10px; }
+  .tagline { color: #7bf1a8; font-size: 14px; letter-spacing: 3px; margin-bottom: 14px; }
+  .story { font-size: 14.5px; line-height: 1.6; color: #e8f2ff; margin-bottom: 16px; }
+  .controls { font-size: 12.5px; line-height: 1.9; color: #bcd7f5; margin-bottom: 18px; }
+  .controls b { color: #fff; }
+  button { pointer-events: auto; cursor: pointer; border: 0; border-radius: 8px; padding: 12px 26px; font-size: 16px; font-weight: bold; color: #14213d; background: linear-gradient(180deg, #ffd166, #f4a261); margin: 4px; box-shadow: 0 4px 14px rgba(0,0,0,0.45); }
+  button:hover { filter: brightness(1.1); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.ghost { background: rgba(255,255,255,0.14); color: #fff; }
+  #save-note { font-size: 12px; color: #9fd8ff; margin-top: 12px; }
 </style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
+<div id="game-canvas"></div>
+<div id="damage-vignette"></div>
+<div id="hud">
+  <div id="hud-top">
+    <div id="hud-money" class="panel">$120</div>
+    <div class="bar-row panel"><span>VERA</span><div class="bar"><div id="health-fill"></div></div></div>
+    <div class="bar-row panel"><span>CAR</span><div class="bar"><div id="vehicle-fill"></div></div></div>
+    <div id="hud-objective" class="panel">Coral City Heat</div>
+  </div>
+  <div id="hud-right">
+    <div id="hud-stars"></div>
+    <div id="hud-clock" class="panel">16:36</div>
+    <div id="hud-cassettes" class="panel">Tapes 0/10</div>
+    <div id="hud-speed" class="panel"></div>
+  </div>
+  <div id="banner"></div>
+  <div id="toast" class="panel"></div>
+  <div id="bust-wrap" class="panel"><span>BUSTED</span><div class="bar"><div id="bust-fill"></div></div></div>
+  <div id="dialogue" class="panel">
+    <div id="dialogue-name"></div>
+    <div id="dialogue-text"></div>
+    <div id="dialogue-hint"></div>
+  </div>
+  <div id="minimap-wrap" class="panel"><canvas id="minimap" width="196" height="196"></canvas></div>
+</div>
+<div id="start-screen" class="screen show">
+  <div class="card panel">
+    <h1>CORAL CITY HEAT</h1>
+    <div class="tagline">V3 - TEN JOBS - ONE DRIVER</div>
+    <p class="story">Vera Solano, the fastest courier on the Coral City docks, takes one job too many. Cafe crates, clinic coolers, a stranded singer, a fragile sculpture and the whole tide-festival fund: ten jobs across a sun-soaked 5x5 city of palms, beaches and neon, with the CCPD watching every shortcut. Finish the chain, find the ten golden cassettes, and keep Vera out of the BUSTED meter.</p>
+    <p class="controls"><b>WASD</b> move / drive &nbsp; <b>Shift</b> run &nbsp; <b>Space</b> handbrake &nbsp; <b>E</b> enter car / talk &nbsp; <b>F</b> start job<br><b>H</b> horn &nbsp; <b>M</b> music &nbsp; <b>P / Esc</b> pause &nbsp; <b>Mouse</b> orbit camera</p>
+    <button id="btn-new">New Game</button>
+    <button id="btn-continue" class="ghost">Continue</button>
+    <div id="save-note"></div>
+  </div>
+</div>
+<div id="pause-screen" class="screen">
+  <div class="card panel">
+    <h2>Paused</h2>
+    <p class="story">Coral City waits for no one, but it can wait for you.</p>
+    <button id="btn-resume">Resume</button>
+    <button id="btn-help" class="ghost">Help</button>
+    <button id="btn-quit-menu" class="ghost">Main Menu</button>
+  </div>
+</div>
+<div id="help-screen" class="screen">
+  <div class="card panel">
+    <h2>How to play</h2>
+    <p class="story">Follow the gold beacon and minimap blip to each job giver, press F, read the dialogue, then chase the marker. Stealing parked cars and crashing raises your wanted stars: cruisers ram, officers chase on foot, roadblocks and spike strips wait at four stars, and a searchlight helicopter joins at five. Slow down near police and the BUSTED meter fills. Golden cassettes glow at corners all over the city; each pays cash, all ten pay a collector bonus. The day turns to night and back roughly every four minutes: lamps, windows and headlights light the streets after dark.</p>
+    <p class="controls"><b>WASD</b> move / drive - <b>E</b> car / talk - <b>F</b> job - <b>Space</b> handbrake - <b>Shift</b> run - <b>P</b> pause</p>
+    <button id="btn-help-close">Back</button>
+  </div>
+</div>
+<div id="respawn-screen" class="screen">
+  <div class="card panel"><h2 id="respawn-title">BUSTED</h2><p class="story" id="respawn-text"></p></div>
+</div>
+<div id="end-screen" class="screen">
+  <div class="card panel">
+    <h2>Story Complete</h2>
+    <p class="story">The tide festival fund is safe, every client paid, and Coral City knows Vera Solano's name. Free roam the city, finish the cassette hunt, or start the chain again.</p>
+    <p class="story" id="end-stats"></p>
+    <button id="btn-again">Play Again</button>
+  </div>
+</div>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

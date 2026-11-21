@@ -1,79 +1,95 @@
-// The screenshot scenes behind ?shot=start|play|end. Each one plays the real rules forward from a
-// fresh world for a fixed number of steps, steered by a simple autopilot (look ahead each way the
-// paddle could move, keep clear of blocks, chase the lowest coin when that is safe), so the frame
-// is what a short game really looks like and the same seed always gives the same frame.
-import { FIELD, PLAYER, STEP } from './config.js';
-import { EVENT_OVER, KIND_BLOCK } from './world.js';
-import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
-
-const START_SECONDS = 5;
-const PLAY_SECONDS = 26;
-const END_LIMIT_SECONDS = 600;
-/**
- * How far ahead, in seconds, the autopilot checks each way it could move: the play scene's pilot
- * looks well ahead and keeps all its lives; the end scene's looks only a moment ahead, so it is
- * caught out once the blocks speed up, as a hurried player is.
- */
-const HORIZON_PLAY = 0.7;
-const HORIZON_END = 0.25;
-const SAMPLE = 1 / 30;
-const DIRECTIONS = [0, -1, 1];
-/** Extra room, each side, it keeps between the paddle and a block. */
-const MARGIN = 10;
-
-/** Seconds until moving in `direction` (-1, 0, 1) runs the paddle into a block; Infinity when it never does. */
-function timeToHit(state, direction, horizon) {
-  const player = state.player;
-  for (let t = SAMPLE; t <= horizon; t += SAMPLE) {
-    const x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * t));
-    for (let index = 0; index < state.items.length; index += 1) {
-      const item = state.items[index];
-      if (!item.active || item.kind !== KIND_BLOCK) continue;
-      const y = item.y + item.speed * t;
-      if (y + item.height > player.y && y < player.y + player.height && item.x < x + player.width + MARGIN && item.x + item.width > x - MARGIN) return t;
-    }
+// Deterministic screenshot poses for ?shot=<name>.
+// Each pose stages the live game (never a mock-up), hides menus, renders a
+// few stable frames and only then raises window.__shotReady.
+export function shotNameFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('shot');
+  } catch (err) {
+    return null;
   }
-  return Infinity;
 }
-
-/** Of the safe ways to move, the one toward the lowest coin (or the centre); else the one that is hit last. */
-function autopilot(state, horizon) {
-  const player = state.player;
-  let coin = null;
-  for (let index = 0; index < state.items.length; index += 1) {
-    const item = state.items[index];
-    if (item.active && item.kind !== KIND_BLOCK && (coin === null || item.y > coin.y)) coin = item;
-  }
-  const target = coin === null ? FIELD.width / 2 : coin.x + coin.width / 2;
-  const centre = player.x + player.width / 2;
-  const wanted = target > centre + 8 ? 1 : target < centre - 8 ? -1 : 0;
-  let best = wanted;
-  let bestTime = timeToHit(state, wanted, horizon);
-  for (let index = 0; index < DIRECTIONS.length && bestTime !== Infinity; index += 1) {
-    const time = timeToHit(state, DIRECTIONS[index], horizon);
-    if (time > bestTime) {
-      bestTime = time;
-      best = DIRECTIONS[index];
-    }
-  }
-  return best;
+export const SHOT_POSES = ['cover', 'drive', 'chase', 'mission'];
+export function applyShotPose(name, game) {
+  if (!SHOT_POSES.includes(name)) return false;
+  game.beginPlay(true);
+  game.setHour(17.4);
+  if (name === 'cover') poseCover(game);
+  if (name === 'drive') poseDrive(game);
+  if (name === 'chase') poseChase(game);
+  if (name === 'mission') poseMission(game);
+  game.hud.showBanner('', 0);
+  // Freeze the simulation so the staged frame is the frame that is shot:
+  // the render loop still draws HUD and minimap, nothing moves or decays.
+  game.state = 'paused';
+  let frames = 0;
+  const wait = () => {
+    frames += 1;
+    game.renderOnce(0.016);
+    if (frames < 4) window.requestAnimationFrame(wait);
+    else window.__shotReady = true;
+  };
+  window.requestAnimationFrame(wait);
+  return true;
 }
-
-/**
- * Set `world` to the named scene (start, play or end; any other name is start) and return the
- * screen to draw over it and the best score to show.
- */
-export function stageShot(name, world) {
-  world.reset();
-  if (name !== 'play' && name !== 'end') {
-    for (let index = 0; index < START_SECONDS / STEP; index += 1) world.step(STEP, 0, true);
-    return { screen: SCREEN_TITLE, best: 0 };
+function poseCover(game) {
+  // Vera stands mid-road on the north-south avenue, city vista ahead.
+  game.player.teleport(-42, 24, 0);
+  game.player.cameraYaw = 0;
+  game.player.cameraPitch = 0.26;
+  game.setHour(17.55);
+  game.hud.showToast('Coral City at golden hour', 30);
+}
+function poseDrive(game) {
+  game.setHour(15.2);
+  const car = game.traffic.nearestCar(-42, 42, 90, false) || game.spawnHeroCar('coupe', -42, 46, 0.8);
+  if (car.type !== 'coupe') {
+    // Prefer a sporty shape for the driving shot.
   }
-  const limit = name === 'end' ? END_LIMIT_SECONDS : PLAY_SECONDS;
-  const horizon = name === 'end' ? HORIZON_END : HORIZON_PLAY;
-  for (let index = 0; index < limit / STEP; index += 1) {
-    if (world.step(STEP, autopilot(world.state, horizon), false) & EVENT_OVER) break;
+  car.x = -42;
+  car.z = 60;
+  car.heading = 0.12;
+  car.speed = 19;
+  car.parked = false;
+  game.player.enterVehicle(car);
+  game.player.cameraYaw = car.heading + Math.PI;
+  game.player._camPos = null;
+  game.hud.showToast('Solstice Coupe - W drive, Space handbrake', 30);
+}
+function poseChase(game) {
+  game.setHour(13.4);
+  // On the open avenue: roadblock ahead of the coupe, cruisers behind it.
+  const car = game.spawnHeroCar('coupe', -42, -34, 0.08);
+  car.speed = 17;
+  game.player.enterVehicle(car);
+  game.police.addHeat(230, car.x, car.z);
+  game.police.stars = game.police.computeStars();
+  game.police.buildRoadblock({ x: car.x, z: car.z, heading: car.heading });
+  const spots = [[-46, -52], [-37, -56], [-42, -63]];
+  for (const [sx, sz] of spots) {
+    const cruiser = game.police.spawnCruiserNear({ x: car.x, z: car.z });
+    cruiser.x = sx;
+    cruiser.z = sz;
+    cruiser.heading = 0.08;
+    cruiser.speed = 14;
+    cruiser.syncMesh(0.016);
   }
-  const over = world.state.lives === 0;
-  return { screen: over ? SCREEN_OVER : SCREEN_PLAY, best: world.state.score };
+  game.police.bust = 46;
+  game.player.cameraYaw = car.heading + Math.PI;
+  game.player._camPos = null;
+  game.hud.showToast('Wanted: lose them or get busted', 30);
+}
+function poseMission(game) {
+  game.setHour(10.6);
+  const mission = game.missions.current();
+  if (mission) {
+    // Stand on the open avenue near the giver, looking toward the gold marker.
+    game.player.teleport(mission.start.x + 4, mission.start.z - 9, -0.42);
+    game.player.cameraYaw = -0.42;
+    game.player.cameraPitch = 0.3;
+    game.player._camPos = null;
+    game.missions.startDialogue(mission.intro, null);
+    game.showDialogue();
+  }
+  game.hud.showToast('Story job available - gold marker', 30);
 }

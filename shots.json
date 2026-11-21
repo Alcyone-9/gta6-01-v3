@@ -1,5 +1,1 @@
-[
-  { "name": "1-start.jpg", "query": "?shot=start&seed=1" },
-  { "name": "2-play.jpg", "query": "?shot=play&seed=1" },
-  { "name": "3-end.jpg", "query": "?shot=end&seed=1" }
-]
+{"poses":[{"file":"1-cover.jpg","name":"cover","shows":"Vera on foot at golden hour facing the Coral City skyline, palms and beach light"},{"file":"2-drive.jpg","name":"drive","shows":"Driving the Solstice Coupe through traffic with HUD and minimap"},{"file":"3-chase.jpg","name":"chase","shows":"Four-star chase: roadblock and spike strip ahead, cruisers behind, BUSTED meter filling"},{"file":"4-mission.jpg","name":"mission","shows":"Story dialogue with Marina Vale open, gold job marker and minimap visible"}]}
